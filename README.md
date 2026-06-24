@@ -15,6 +15,29 @@ in context; the body loads when the skill triggers; `references/` and `scripts/`
 | [`owasp/`](owasp/) | Identify, explain, and (on request) fix OWASP-class vulnerabilities in Node.js, TypeScript, React, SolidJS, Elixir, Python, and Go. Top 10 (2021) + 10 extended categories, with onboarding/KYC/backoffice/AI-ML domain checks. |
 | [`teachme/`](teachme/) | Teach a concept or skill through Socratic questioning + worked examples (not lectures). Runs a diagnose → worked-example → faded-example → independent-practice → spaced-retrieval loop, calibrated to the learner's level and continued across sessions via a small workspace. `/teachme <topic>`. |
 
+#### Using `owasp` — scan vs. fix
+
+`owasp` **reports by default and never modifies your code unless you ask.** Fixing is opt-in:
+
+```
+/owasp                 Scan the whole repo and report findings (no changes)
+/owasp <path>          Scan a directory or file
+/owasp --diff          Scan only changed files (pre-commit / PR use)
+/owasp --staged        Scan only git-staged files
+/owasp --fix [scope]   Scan, then apply fixes
+```
+
+When fixing, it splits changes by risk:
+
+- **Mechanical / low-risk fixes are applied directly** — e.g. parameterize a SQL query, add
+  `httpOnly`/`secure`/`sameSite` cookie flags, pin a JWT algorithm, add `rel="noopener"`.
+- **Behavior-changing fixes are explained and confirmed first** — auth/authz logic, removing
+  deserialization, tightening CORS, redirect allowlists, or anything needing a migration (e.g.
+  `md5` → `bcrypt`/`argon2` changes the stored-hash format).
+
+It never weakens a control to make a test pass, and **re-runs the scan after fixing** to confirm
+the signature is gone — flagging anything that still needs a human security review.
+
 ### Command-based projects
 
 | Project | What it does |
