@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course Viewer</title>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism-tomorrow.min.css" id="prism-theme-dark" disabled>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1/themes/prism.min.css" id="prism-theme-light">
+  <style>
+    .viewer { display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 280px; min-width: 280px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      padding: 1.5rem 1rem;
+      overflow-y: auto;
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar h2 { font-size: 1.1rem; margin-bottom: 1rem; border: none; }
+    .sidebar a {
+      display: block; padding: 0.4rem 0.75rem; margin: 0.15rem 0;
+      border-radius: 6px; color: var(--text-secondary); font-size: 0.9rem;
+    }
+    .sidebar a:hover { background: var(--bg-primary); color: var(--accent); text-decoration: none; }
+    .sidebar a.active { background: var(--accent-subtle); color: var(--accent); font-weight: 600; }
+    .sidebar .section-label {
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-muted); margin-top: 1rem; margin-bottom: 0.25rem; padding-left: 0.75rem;
+    }
+    .content { flex: 1; max-width: 54rem; margin: 0 auto; padding: 2rem 2.5rem; }
+    .mobile-nav { display: none; }
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .sidebar.open { display: block; position: fixed; top: 0; left: 0; z-index: 300; height: 100vh; width: 280px; box-shadow: var(--shadow-lg); }
+      .content { padding: 1rem; }
+      .mobile-nav { display: flex; position: sticky; top: 0; z-index: 100; background: var(--bg-primary); border-bottom: 1px solid var(--border); padding: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress-bar" id="progress"></div>
+  <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme"></button>
+
+  <div class="mobile-nav">
+    <button class="btn" id="menuToggle" aria-label="Menu">Menu</button>
+  </div>
+
+  <div class="viewer">
+    <nav class="sidebar" id="sidebar">
+      <h2>Course</h2>
+      <div id="navLinks">Loading...</div>
+    </nav>
+    <main class="content" id="content">Loading...</main>
+  </div>
+
+  <!-- CDN Libraries (loaded conditionally) -->
+  <script src="https://cdn.jsdelivr.net/npm/markdown-it@14/dist/markdown-it.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/prism.min.js"></script>
+
+  <script>
+  /* ===========================================================
+     CODE-TO-DOCS INTERACTIVE VIEWER
+     =========================================================== */
+
+  // ---- Helpers ----
+  function getCSSVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+  function isDark() {
+    return document.documentElement.getAttribute('data-theme') === 'dark';
+  }
+  function getCurrentPage() {
+    return new URLSearchParams(window.location.search).get('page') || '01-overview.md';
+  }
+
+  // Track loaded libs
+  const libs = { mermaid: false, d3: false };
+
+  function loadLib(name, url) {
+    if (libs[name]) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = url;
+      s.onload = () => { libs[name] = true; resolve(); };
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
+
+  // ---- Theme ----
+  const toggle = document.getElementById('themeToggle');
+  const saved = localStorage.getItem('course-theme') || 'light';
+  document.documentElement.setAttribute('data-theme', saved);
+
+  function updateIcon() {
+    toggle.textContent = isDark() ? '\u2600\uFE0F' : '\uD83C\uDF19';
+  }
+  function updatePrismTheme() {
+    const dark = isDark();
+    document.getElementById('prism-theme-dark').disabled = !dark;
+    document.getElementById('prism-theme-light').disabled = dark;
+  }
+  updateIcon();
+  updatePrismTheme();
+
+  toggle.addEventListener('click', () => {
+    const next = isDark() ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('course-theme', next);
+    updateIcon();
+    updatePrismTheme();
+    reRenderThemeAware();
+  });
+
+  // ---- Progress Bar ----
+  window.addEventListener('scroll', () => {
+    const pct = (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100;
+    document.getElementById('progress').style.width = Math.min(pct, 100) + '%';
+  });
+
+  // ---- Mobile Menu ----
+  document.getElementById('menuToggle')?.addEventListener('click', () => {
+    document.getElementById('sidebar').classList.toggle('open');
+  });
+
+  // ---- Navigation ----
+  let courseIndex = null;
+
+  async function loadNav() {
+    try {
+      courseIndex = await (await fetch('../00-index.json')).json();
+      let html = '';
+      html += `<a href="?page=01-overview.md">Overview</a>`;
+      html += `<a href="?page=02-architecture.md">Architecture</a>`;
+      // Only show modules/flows that have been generated (have a course_file)
+      const generatedModules = (courseIndex.modules || []).filter(m => m.course_file);
+      const pendingModules = (courseIndex.modules || []).filter(m => !m.course_file);
+      if (generatedModules.length) {
+        html += '<div class="section-label">Modules</div>';
+        generatedModules.forEach(m => {
+          html += `<a href="?page=${m.course_file}">${m.name}</a>`;
+        });
+      }
+      if (pendingModules.length) {
+        html += '<div class="section-label" style="opacity:0.5">Not yet generated</div>';
+        pendingModules.forEach(m => {
+          html += `<span style="display:block;padding:0.4rem 0.75rem;margin:0.15rem 0;font-size:0.85rem;color:var(--text-muted)">${m.name}</span>`;
+        });
+      }
+      const generatedFlows = (courseIndex.flows || []).filter(f => f.course_file);
+      if (generatedFlows.length) {
+        html += '<div class="section-label">Flows</div>';
+        generatedFlows.forEach(f => {
+          html += `<a href="?page=${f.course_file}">${f.name}</a>`;
+        });
+      }
+      document.getElementById('navLinks').innerHTML = html;
+      highlightActive();
+    } catch (e) {
+      document.getElementById('navLinks').textContent = 'Index not found';
+    }
+  }
+
+  function highlightActive() {
+    const current = getCurrentPage();
+    document.querySelectorAll('.sidebar a').forEach(a => {
+      a.classList.toggle('active', a.getAttribute('href') === `?page=${current}`);
+    });
+  }
+
+  // ---- Page Loading ----
+  const mdRenderer = window.markdownit ? window.markdownit({ html: true, linkify: true, typographer: true }) : null;
+
+  async function loadPage() {
+    const page = getCurrentPage();
+    try {
+      const resp = await fetch('../' + page);
+      if (!resp.ok) throw new Error(`${resp.status}`);
+      const md = await resp.text();
+      document.getElementById('content').innerHTML = mdRenderer ? mdRenderer.render(md) : `<pre>${md}</pre>`;
+      window.scrollTo(0, 0);
+      document.title = page.replace(/\.md$/, '').replace(/.*\//, '').replace(/-/g, ' ');
+      highlightActive();
+      await processInteractiveBlocks();
+    } catch (e) {
+      const isModule = page.startsWith('modules/') || page.startsWith('flows/');
+      document.getElementById('content').innerHTML = isModule
+        ? `<div style="padding:2rem;text-align:center;color:var(--text-muted)">
+            <h2 style="border:none">Not yet generated</h2>
+            <p>This page will be created when you run:</p>
+            <code style="font-size:1.1em">/code-to-docs-generate all</code>
+            <p style="margin-top:1rem">or generate just this module:</p>
+            <code style="font-size:1.1em">/code-to-docs-generate ${page.replace(/^(modules|flows)\/\d+-/, '').replace('.md', '')}</code>
+          </div>`
+        : `<p>Page not found: ${page}</p>`;
+    }
+  }
+
+  // SPA nav — intercept both sidebar ?page= links and relative .md links in content
+  function resolveRelativeLink(href) {
+    // Already a ?page= link
+    if (href.startsWith('?page=')) return href;
+    // Only intercept .md links
+    if (!href.endsWith('.md')) return null;
+    // Ignore absolute URLs
+    if (href.startsWith('http://') || href.startsWith('https://')) return null;
+
+    // Resolve relative path against current page's directory
+    const currentPage = getCurrentPage();
+    const currentDir = currentPage.includes('/') ? currentPage.substring(0, currentPage.lastIndexOf('/') + 1) : '';
+
+    let resolved = currentDir + href;
+    // Normalize: resolve ./ and ../
+    const parts = resolved.split('/');
+    const normalized = [];
+    for (const part of parts) {
+      if (part === '.') continue;
+      if (part === '..' && normalized.length > 0) { normalized.pop(); continue; }
+      normalized.push(part);
+    }
+    return '?page=' + normalized.join('/');
+  }
+
+  document.getElementById('sidebar').addEventListener('click', e => {
+    const a = e.target.closest('a');
+    if (!a) return;
+    const resolved = resolveRelativeLink(a.getAttribute('href'));
+    if (resolved) {
+      e.preventDefault();
+      history.pushState(null, '', resolved);
+      document.getElementById('sidebar').classList.remove('open');
+      loadPage();
+    }
+  });
+
+  // Intercept relative .md links in the main content area
+  document.getElementById('content').addEventListener('click', e => {
+    const a = e.target.closest('a');
+    if (!a) return;
+    const resolved = resolveRelativeLink(a.getAttribute('href'));
+    if (resolved) {
+      e.preventDefault();
+      history.pushState(null, '', resolved);
+      loadPage();
+    }
+  });
+
+  window.addEventListener('popstate', loadPage);
+
+  // ---- Interactive Block Dispatcher ----
+  async function processInteractiveBlocks() {
+    const blocks = document.querySelectorAll('#content pre > code');
+    const needsMermaid = [];
+    const needsD3 = [];
+
+    blocks.forEach(codeEl => {
+      const lang = [...codeEl.classList].find(c => c.startsWith('language-'))?.replace('language-', '');
+      if (!lang) return;
+      const pre = codeEl.parentElement;
+      const raw = codeEl.textContent;
+
+      if (lang === 'mermaid') needsMermaid.push({ pre, raw });
+      else if (lang === 'dep-graph' || lang === 'complexity-heatmap') needsD3.push({ pre, raw, lang });
+      else {
+        switch (lang) {
+          case 'flow-trace': renderFlowTrace(pre, raw); break;
+          case 'chat': renderChat(pre, raw); break;
+          case 'code-walkthrough': renderCodeWalkthrough(pre, raw); break;
+          case 'drag-match': renderDragMatch(pre, raw); break;
+          case 'spot-the-bug': renderSpotTheBug(pre, raw); break;
+          case 'arch-minimap': renderMinimap(pre, raw); break;
+        }
+      }
+    });
+
+    // Load libraries on demand
+    if (needsMermaid.length) {
+      await loadLib('mermaid', 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js');
+      initMermaid();
+      for (const { pre, raw } of needsMermaid) await renderMermaid(pre, raw);
+    }
+    if (needsD3.length) {
+      await loadLib('d3', 'https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js');
+      for (const { pre, raw, lang } of needsD3) {
+        if (lang === 'dep-graph') renderDepGraph(pre, raw);
+        else renderHeatmap(pre, raw);
+      }
+    }
+
+    // Syntax highlight any remaining code blocks
+    if (window.Prism) Prism.highlightAllUnder(document.getElementById('content'));
+  }
+
+  // ---- Theme re-render ----
+  function reRenderThemeAware() {
+    // Re-render mermaid diagrams (they bake colors into SVG)
+    if (libs.mermaid && window.mermaid) {
+      initMermaid();
+      document.querySelectorAll('.interactive-mermaid').forEach(async el => {
+        const raw = el.getAttribute('data-source');
+        if (raw) {
+          const id = 'mermaid-' + Math.random().toString(36).slice(2, 8);
+          try {
+            const { svg } = await mermaid.render(id, raw);
+            const svgContainer = el.querySelector('.mermaid-svg');
+            if (svgContainer) svgContainer.innerHTML = svg;
+          } catch (e) {
+            document.getElementById(id)?.remove();
+          }
+        }
+      });
+    }
+    // D3 components read CSS vars at paint time — just trigger redraw
+    document.querySelectorAll('.interactive-dep-graph, .interactive-heatmap').forEach(el => {
+      if (el.__redraw) el.__redraw();
+    });
+  }
+
+  function initMermaid() {
+    if (!window.mermaid) return;
+    mermaid.initialize({
+      startOnLoad: false,
+      suppressErrors: true,
+      theme: isDark() ? 'dark' : 'default',
+      themeVariables: isDark() ? {
+        primaryColor: '#3B2A35', primaryTextColor: '#CDD6F4',
+        lineColor: '#585B70', secondaryColor: '#2A2A3C'
+      } : {
+        primaryColor: '#FFF0EB', primaryTextColor: '#2C2A28',
+        lineColor: '#C8C3BA', secondaryColor: '#F0EDE6'
+      }
+    });
+  }
+
+  // ============================================================
+  // INTERACTIVE RENDERERS
+  // ============================================================
+
+  // ---- 1. Mermaid Diagrams ----
+
+  // markdown-it encodes HTML entities inside <code> blocks, but Mermaid needs raw text
+  function decodeMermaidSource(raw) {
+    return raw
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .trim();
+  }
+
+  async function renderMermaid(pre, raw) {
+    const decoded = decodeMermaidSource(raw);
+    const container = document.createElement('div');
+    container.className = 'interactive-container interactive-mermaid';
+    container.setAttribute('data-source', decoded);
+    const id = 'mermaid-' + Math.random().toString(36).slice(2, 8);
+    try {
+      const { svg } = await mermaid.render(id, decoded);
+      container.innerHTML = `
+        <div class="interactive-header"><span class="label">Diagram</span></div>
+        <div class="interactive-body">
+          <div class="mermaid-svg">${svg}</div>
+          <div class="mermaid-zoom">
+            <button class="btn" onclick="this.closest('.interactive-mermaid').querySelector('svg').style.transform='scale(1.3)'">+</button>
+            <button class="btn" onclick="this.closest('.interactive-mermaid').querySelector('svg').style.transform='scale(1)'">Reset</button>
+            <button class="btn" onclick="this.closest('.interactive-mermaid').querySelector('svg').style.transform='scale(0.7)'">-</button>
+          </div>
+        </div>`;
+    } catch (e) {
+      // Clean up any orphan SVG Mermaid may have left in the DOM
+      document.getElementById(id)?.remove();
+      // Show the raw source in a readable code block with error context
+      container.innerHTML = `
+        <div class="interactive-header"><span class="label">Diagram</span> <span style="color:var(--tag-moderate);font-size:0.8em">(render error — showing source)</span></div>
+        <div class="interactive-body"><pre style="white-space:pre-wrap">${escapeHtml(decoded)}</pre></div>`;
+      console.warn('Mermaid render error:', e.message || e, '\nSource:', decoded);
+    }
+    pre.replaceWith(container);
+  }
+
+  // ---- 3. Dependency Graph (D3) ----
+  function renderDepGraph(pre, raw) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) {
+      pre.innerHTML = `<code>Invalid dep-graph JSON: ${e.message}</code>`;
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'interactive-container interactive-dep-graph';
+    container.innerHTML = `
+      <div class="interactive-header"><span class="label">Dependency Graph</span> ${data.title || ''}</div>
+      <div class="interactive-body"><svg></svg></div>`;
+    pre.replaceWith(container);
+
+    const svgEl = container.querySelector('svg');
+    const width = svgEl.parentElement.clientWidth || 600;
+    const height = 400;
+
+    function draw() {
+      const svg = d3.select(svgEl).attr('viewBox', `0 0 ${width} ${height}`);
+      svg.selectAll('*').remove();
+
+      const g = svg.append('g');
+      svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', e => g.attr('transform', e.transform)));
+
+      // Arrow marker
+      svg.append('defs').append('marker').attr('id', 'arrow').attr('viewBox', '0 -5 10 10')
+        .attr('refX', 28).attr('refY', 0).attr('markerWidth', 6).attr('markerHeight', 6)
+        .attr('orient', 'auto').append('path').attr('d', 'M0,-5L10,0L0,5')
+        .attr('fill', getCSSVar('--border-strong'));
+
+      const sim = d3.forceSimulation(data.nodes)
+        .force('link', d3.forceLink(data.edges).id(d => d.id).distance(120))
+        .force('charge', d3.forceManyBody().strength(-300))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .alphaDecay(0.05);
+
+      const link = g.append('g').selectAll('line').data(data.edges).join('line')
+        .attr('class', 'dep-edge-line')
+        .attr('stroke', getCSSVar('--border-strong')).attr('stroke-width', 1.5)
+        .attr('marker-end', 'url(#arrow)');
+
+      const linkLabel = g.append('g').selectAll('text').data(data.edges).join('text')
+        .attr('font-size', 10).attr('fill', getCSSVar('--text-muted'))
+        .attr('text-anchor', 'middle').text(d => d.label || '');
+
+      const node = g.append('g').selectAll('g').data(data.nodes).join('g')
+        .attr('class', 'dep-node').call(d3.drag()
+          .on('start', (e, d) => { if (!e.active) sim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+          .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+          .on('end', (e, d) => { if (!e.active) sim.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+      const complexityColors = {
+        simple: getCSSVar('--tag-simple'), moderate: getCSSVar('--tag-moderate'),
+        complex: getCSSVar('--tag-complex'), critical: getCSSVar('--tag-critical')
+      };
+
+      node.append('circle').attr('r', 20)
+        .attr('fill', d => complexityColors[d.complexity] || getCSSVar('--accent'))
+        .attr('stroke', getCSSVar('--bg-primary')).attr('stroke-width', 2);
+
+      node.append('text').text(d => d.label).attr('dy', 32).attr('text-anchor', 'middle')
+        .attr('fill', getCSSVar('--text-primary')).attr('font-size', 11);
+
+      // Hover highlighting
+      node.on('mouseover', (e, d) => {
+        const connected = new Set();
+        connected.add(d.id);
+        data.edges.forEach(edge => {
+          const s = typeof edge.source === 'object' ? edge.source.id : edge.source;
+          const t = typeof edge.target === 'object' ? edge.target.id : edge.target;
+          if (s === d.id) connected.add(t);
+          if (t === d.id) connected.add(s);
+        });
+        node.style('opacity', n => connected.has(n.id) ? 1 : getCSSVar('--dim-opacity'));
+        link.style('opacity', l => {
+          const s = typeof l.source === 'object' ? l.source.id : l.source;
+          const t = typeof l.target === 'object' ? l.target.id : l.target;
+          return (s === d.id || t === d.id) ? 1 : getCSSVar('--dim-opacity');
+        });
+      }).on('mouseout', () => {
+        node.style('opacity', 1);
+        link.style('opacity', 1);
+      });
+
+      // Click to navigate
+      node.on('click', (e, d) => {
+        if (d.file) {
+          history.pushState(null, '', `?page=${d.file}`);
+          loadPage();
+        }
+      });
+
+      sim.on('tick', () => {
+        link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+          .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+        linkLabel.attr('x', d => (d.source.x + d.target.x) / 2)
+          .attr('y', d => (d.source.y + d.target.y) / 2 - 5);
+        node.attr('transform', d => `translate(${d.x},${d.y})`);
+      });
+    }
+
+    draw();
+    container.__redraw = draw;
+  }
+
+  // ---- 4. Animated Flow Trace ----
+  function renderFlowTrace(pre, raw) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) {
+      pre.innerHTML = `<code>Invalid flow-trace JSON: ${e.message}</code>`;
+      return;
+    }
+
+    const components = [...new Set(data.steps.map(s => s.component))];
+    let currentStep = -1;
+
+    const container = document.createElement('div');
+    container.className = 'interactive-container';
+    container.innerHTML = `
+      <div class="interactive-header"><span class="label">Flow Trace</span> ${data.title}</div>
+      <div class="interactive-body">
+        <div class="flow-trace-lanes">${components.map(c => `<div class="flow-trace-lane" data-component="${c}">${c}</div>`).join('')}</div>
+        <div class="flow-trace-steps">${data.steps.map((s, i) => `
+          <div class="flow-trace-step" data-index="${i}">
+            <div class="step-component">${s.component}</div>
+            <div class="step-action">${s.action}</div>
+            <div class="step-file">${s.file}</div>
+            <div class="step-detail">${s.detail}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+      <div class="interactive-controls">
+        <button class="btn" data-action="prev" disabled>Prev</button>
+        <button class="btn btn-primary" data-action="next">Next</button>
+        <button class="btn" data-action="all">Show All</button>
+        <span class="step-counter">Step 0 of ${data.steps.length}</span>
+      </div>`;
+    pre.replaceWith(container);
+
+    const lanes = container.querySelectorAll('.flow-trace-lane');
+    const steps = container.querySelectorAll('.flow-trace-step');
+    const counter = container.querySelector('.step-counter');
+    const prevBtn = container.querySelector('[data-action="prev"]');
+    const nextBtn = container.querySelector('[data-action="next"]');
+
+    function showStep(n) {
+      currentStep = n;
+      lanes.forEach(l => l.classList.toggle('active', data.steps[n] && l.dataset.component === data.steps[n].component));
+      steps.forEach((s, i) => s.classList.toggle('visible', i <= n));
+      counter.textContent = `Step ${n + 1} of ${data.steps.length}`;
+      prevBtn.disabled = n <= 0;
+      nextBtn.disabled = n >= data.steps.length - 1;
+    }
+
+    container.querySelector('[data-action="next"]').addEventListener('click', () => {
+      if (currentStep < data.steps.length - 1) showStep(currentStep + 1);
+    });
+    container.querySelector('[data-action="prev"]').addEventListener('click', () => {
+      if (currentStep > 0) showStep(currentStep - 1);
+    });
+    container.querySelector('[data-action="all"]').addEventListener('click', () => {
+      showStep(data.steps.length - 1);
+    });
+  }
+
+  // ---- 5. Group Chat ----
+  function renderChat(pre, raw) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) {
+      pre.innerHTML = `<code>Invalid chat JSON: ${e.message}</code>`;
+      return;
+    }
+
+    const icons = { laptop: '\uD83D\uDCBB', server: '\uD83D\uDDA5\uFE0F', shield: '\uD83D\uDEE1\uFE0F', database: '\uD83D\uDDC4\uFE0F', default: '\u2B55' };
+    let currentMsg = -1;
+
+    const container = document.createElement('div');
+    container.className = 'interactive-container';
+    container.innerHTML = `
+      <div class="interactive-header"><span class="label">Chat</span> ${data.title}</div>
+      <div class="interactive-body">
+        <div class="chat-container">
+          ${data.messages.map((m, i) => {
+            const p = data.participants[m.from] || {};
+            const icon = icons[p.icon] || icons.default;
+            return `<div class="chat-message" data-index="${i}">
+              <div class="chat-avatar" style="background:${p.color || '#888'}">${icon}</div>
+              <div class="chat-bubble">
+                <div class="chat-name" style="color:${p.color || 'inherit'}">${m.from}</div>
+                <div class="chat-text">${m.text}</div>
+                ${m.technical ? `<div class="chat-technical" data-idx="${i}">${m.technical}</div>` : ''}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="interactive-controls">
+        <button class="btn btn-primary" data-action="next">Next</button>
+        <button class="btn" data-action="all">Show All</button>
+        <button class="btn" data-action="technical">Toggle Technical</button>
+        <span class="step-counter">0 of ${data.messages.length}</span>
+      </div>`;
+    pre.replaceWith(container);
+
+    const msgs = container.querySelectorAll('.chat-message');
+    const counter = container.querySelector('.step-counter');
+    const nextBtn = container.querySelector('[data-action="next"]');
+
+    function showMsg(n) {
+      currentMsg = n;
+      msgs.forEach((m, i) => m.classList.toggle('visible', i <= n));
+      counter.textContent = `${n + 1} of ${data.messages.length}`;
+      nextBtn.disabled = n >= data.messages.length - 1;
+    }
+
+    nextBtn.addEventListener('click', () => {
+      if (currentMsg < data.messages.length - 1) showMsg(currentMsg + 1);
+    });
+    container.querySelector('[data-action="all"]').addEventListener('click', () => {
+      showMsg(data.messages.length - 1);
+    });
+    container.querySelector('[data-action="technical"]').addEventListener('click', () => {
+      container.querySelectorAll('.chat-technical').forEach(t => t.classList.toggle('show'));
+    });
+  }
+
+  // ---- 6. Code Walkthrough ----
+  function renderCodeWalkthrough(pre, raw) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) {
+      pre.innerHTML = `<code>Invalid code-walkthrough JSON: ${e.message}</code>`;
+      return;
+    }
+
+    const lines = data.code.split('\n');
+    let currentStep = 0;
+
+    const container = document.createElement('div');
+    container.className = 'interactive-container';
+    container.innerHTML = `
+      <div class="interactive-header"><span class="label">Walkthrough</span> ${data.title}</div>
+      <div class="interactive-body">
+        <div class="walkthrough-panels">
+          <div class="walkthrough-code">
+            ${lines.map((line, i) => `<div class="line" data-line="${i + 1}"><span class="line-num">${i + 1}</span><span class="line-content">${escapeHtml(line)}</span></div>`).join('')}
+          </div>
+          <div class="walkthrough-annotation">${data.steps[0]?.annotation || ''}</div>
+        </div>
+      </div>
+      <div class="interactive-controls">
+        <button class="btn" data-action="prev" disabled>Prev</button>
+        <button class="btn btn-primary" data-action="next">Next</button>
+        <span class="step-counter">Step 1 of ${data.steps.length}</span>
+      </div>`;
+    pre.replaceWith(container);
+
+    const codeLines = container.querySelectorAll('.line');
+    const annotation = container.querySelector('.walkthrough-annotation');
+    const counter = container.querySelector('.step-counter');
+    const prevBtn = container.querySelector('[data-action="prev"]');
+    const nextBtn = container.querySelector('[data-action="next"]');
+
+    function showStep(n) {
+      currentStep = n;
+      const step = data.steps[n];
+      codeLines.forEach(l => {
+        const ln = parseInt(l.dataset.line);
+        const isActive = step.lines.includes(ln);
+        l.classList.toggle('highlighted', isActive);
+        l.classList.toggle('dimmed', !isActive);
+      });
+      annotation.textContent = step.annotation;
+      counter.textContent = `Step ${n + 1} of ${data.steps.length}`;
+      prevBtn.disabled = n <= 0;
+      nextBtn.disabled = n >= data.steps.length - 1;
+
+      // Scroll to first highlighted line
+      const first = container.querySelector('.line.highlighted');
+      if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    showStep(0);
+    nextBtn.addEventListener('click', () => { if (currentStep < data.steps.length - 1) showStep(currentStep + 1); });
+    prevBtn.addEventListener('click', () => { if (currentStep > 0) showStep(currentStep - 1); });
+  }
+
+  // ---- 7. Drag and Drop Matching ----
+  function renderDragMatch(pre, raw) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) {
+      pre.innerHTML = `<code>Invalid drag-match JSON: ${e.message}</code>`;
+      return;
+    }
+
+    const shuffled = [...data.pairs].sort(() => Math.random() - 0.5);
+    let score = 0;
+    let selected = null;
+
+    const container = document.createElement('div');
+    container.className = 'interactive-container';
+    container.innerHTML = `
+      <div class="interactive-header"><span class="label">Exercise</span> ${data.title}</div>
+      <div class="interactive-body">
+        <div class="drag-match-area">
+          <div>
+            <div class="drag-column-label">Concepts</div>
+            <div class="concepts-col">${data.pairs.map((p, i) =>
+              `<div class="drag-concept" data-idx="${i}" draggable="true">${p.concept}</div>`
+            ).join('')}</div>
+          </div>
+          <div>
+            <div class="drag-column-label">Descriptions</div>
+            <div class="descriptions-col">${shuffled.map((p, i) =>
+              `<div class="drop-zone" data-desc="${p.description}">${p.description}</div>`
+            ).join('')}</div>
+          </div>
+        </div>
+        <div class="drag-score">Score: <span class="score-val">0</span> / ${data.pairs.length}</div>
+      </div>
+      <div class="interactive-controls">
+        <button class="btn" data-action="reset">Reset</button>
+      </div>`;
+    pre.replaceWith(container);
+
+    const concepts = container.querySelectorAll('.drag-concept');
+    const zones = container.querySelectorAll('.drop-zone');
+    const scoreEl = container.querySelector('.score-val');
+
+    // Touch-friendly: tap to select, tap zone to place
+    concepts.forEach(c => {
+      c.addEventListener('click', () => {
+        if (c.classList.contains('matched')) return;
+        concepts.forEach(x => x.classList.remove('selected'));
+        c.classList.add('selected');
+        selected = c;
+      });
+
+      c.addEventListener('dragstart', e => {
+        selected = c;
+        c.classList.add('dragging');
+        e.dataTransfer.setData('text/plain', c.dataset.idx);
+      });
+      c.addEventListener('dragend', () => c.classList.remove('dragging'));
+    });
+
+    zones.forEach(z => {
+      z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('over'); });
+      z.addEventListener('dragleave', () => z.classList.remove('over'));
+
+      function handleDrop() {
+        z.classList.remove('over');
+        if (!selected || z.classList.contains('correct')) return;
+        const pair = data.pairs[parseInt(selected.dataset.idx)];
+        if (pair.description === z.dataset.desc) {
+          z.classList.add('correct');
+          selected.classList.add('matched');
+          selected.classList.remove('selected');
+          selected.style.opacity = '0.5';
+          selected.draggable = false;
+          score++;
+          scoreEl.textContent = score;
+        } else {
+          z.classList.add('incorrect');
+          setTimeout(() => z.classList.remove('incorrect'), 400);
+        }
+        selected = null;
+      }
+
+      z.addEventListener('drop', e => { e.preventDefault(); handleDrop(); });
+      z.addEventListener('click', handleDrop);
+    });
+
+    container.querySelector('[data-action="reset"]').addEventListener('click', () => {
+      score = 0;
+      scoreEl.textContent = 0;
+      selected = null;
+      concepts.forEach(c => { c.classList.remove('matched', 'selected'); c.style.opacity = ''; c.draggable = true; });
+      zones.forEach(z => z.classList.remove('correct', 'incorrect'));
+    });
+  }
+
+  // ---- 8. Spot the Bug ----
+  function renderSpotTheBug(pre, raw) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) {
+      pre.innerHTML = `<code>Invalid spot-the-bug JSON: ${e.message}</code>`;
+      return;
+    }
+
+    const lines = data.code.split('\n');
+    let hintsShown = 0;
+    let solved = false;
+
+    const container = document.createElement('div');
+    container.className = 'interactive-container';
+    container.innerHTML = `
+      <div class="interactive-header"><span class="label">Debug Challenge</span> ${data.title}</div>
+      <div class="interactive-body">
+        <p style="margin-bottom:1rem;color:var(--text-secondary)">Click the line that contains the bug:</p>
+        <div class="bug-code">
+          ${lines.map((line, i) => `<div class="bug-line" data-line="${i + 1}"><span class="line-num">${i + 1}</span><span>${escapeHtml(line)}</span></div>`).join('')}
+        </div>
+        <div class="bug-hints"></div>
+        <div class="bug-result"></div>
+      </div>
+      <div class="interactive-controls">
+        <button class="btn" data-action="giveup">Give Up</button>
+      </div>`;
+    pre.replaceWith(container);
+
+    const bugLines = container.querySelectorAll('.bug-line');
+    const hintsDiv = container.querySelector('.bug-hints');
+    const resultDiv = container.querySelector('.bug-result');
+
+    bugLines.forEach(bl => {
+      bl.addEventListener('click', () => {
+        if (solved) return;
+        const lineNum = parseInt(bl.dataset.line);
+        if (data.bug_lines.includes(lineNum)) {
+          solved = true;
+          bl.classList.add('found');
+          resultDiv.innerHTML = `<div class="bug-explanation">${data.explanation}</div>`;
+          // Mini confetti
+          for (let i = 0; i < 12; i++) {
+            const c = document.createElement('div');
+            c.className = 'confetti-piece';
+            c.style.left = (bl.offsetLeft + Math.random() * bl.offsetWidth) + 'px';
+            c.style.top = bl.offsetTop + 'px';
+            c.style.background = ['#F38BA8', '#A6E3A1', '#89B4FA', '#FAB387', '#CBA6F7'][i % 5];
+            c.style.animationDelay = (Math.random() * 0.3) + 's';
+            container.querySelector('.interactive-body').appendChild(c);
+            setTimeout(() => c.remove(), 1200);
+          }
+        } else {
+          bl.classList.add('wrong');
+          setTimeout(() => bl.classList.remove('wrong'), 500);
+          if (hintsShown < data.hints.length) {
+            hintsDiv.innerHTML += `<div class="bug-hint">Hint ${hintsShown + 1}: ${data.hints[hintsShown]}</div>`;
+            hintsShown++;
+          }
+        }
+      });
+    });
+
+    container.querySelector('[data-action="giveup"]').addEventListener('click', () => {
+      if (solved) return;
+      solved = true;
+      data.bug_lines.forEach(ln => {
+        container.querySelector(`.bug-line[data-line="${ln}"]`)?.classList.add('found');
+      });
+      resultDiv.innerHTML = `<div class="bug-explanation">${data.explanation}</div>`;
+    });
+  }
+
+  // ---- 9. Complexity Heatmap (D3) ----
+  function renderHeatmap(pre, raw) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) {
+      pre.innerHTML = `<code>Invalid complexity-heatmap JSON: ${e.message}</code>`;
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'interactive-container interactive-heatmap';
+    container.innerHTML = `
+      <div class="interactive-header"><span class="label">Heatmap</span> ${data.title}</div>
+      <div class="interactive-body" style="position:relative"><svg></svg></div>`;
+    pre.replaceWith(container);
+
+    const svgEl = container.querySelector('svg');
+    const tooltip = document.createElement('div');
+    tooltip.className = 'heatmap-tooltip';
+    tooltip.style.display = 'none';
+    container.querySelector('.interactive-body').appendChild(tooltip);
+
+    function draw() {
+      const width = svgEl.parentElement.clientWidth || 600;
+      const height = 300;
+
+      const svg = d3.select(svgEl).attr('viewBox', `0 0 ${width} ${height}`);
+      svg.selectAll('*').remove();
+
+      const colors = {
+        simple: getCSSVar('--tag-simple'), moderate: getCSSVar('--tag-moderate'),
+        complex: getCSSVar('--tag-complex'), critical: getCSSVar('--tag-critical')
+      };
+
+      const root = d3.hierarchy({ children: data.items }).sum(d => d.loc || 1);
+      d3.treemap().size([width, height]).padding(3)(root);
+
+      const cells = svg.selectAll('g').data(root.leaves()).join('g')
+        .attr('transform', d => `translate(${d.x0},${d.y0})`);
+
+      cells.append('rect')
+        .attr('class', 'heatmap-cell')
+        .attr('width', d => Math.max(0, d.x1 - d.x0))
+        .attr('height', d => Math.max(0, d.y1 - d.y0))
+        .attr('rx', 4)
+        .attr('fill', d => colors[d.data.complexity] || colors.moderate);
+
+      cells.filter(d => (d.x1 - d.x0) > 50 && (d.y1 - d.y0) > 25)
+        .append('text').attr('class', 'heatmap-label')
+        .attr('x', 6).attr('y', 16)
+        .text(d => d.data.path.split('/').pop());
+
+      cells.filter(d => (d.x1 - d.x0) > 60 && (d.y1 - d.y0) > 38)
+        .append('text').attr('class', 'heatmap-sublabel')
+        .attr('x', 6).attr('y', 30)
+        .text(d => `${d.data.loc} LOC`);
+
+      cells.on('mouseover', (e, d) => {
+        tooltip.style.display = 'block';
+        tooltip.innerHTML = `<strong>${d.data.path}</strong><br>Files: ${d.data.files} | LOC: ${d.data.loc}<br>Complexity: <span style="color:${colors[d.data.complexity]}">${d.data.complexity}</span>`;
+      }).on('mousemove', e => {
+        const rect = container.querySelector('.interactive-body').getBoundingClientRect();
+        tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+        tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+      }).on('mouseout', () => {
+        tooltip.style.display = 'none';
+      });
+    }
+
+    draw();
+    container.__redraw = draw;
+  }
+
+  // ---- 10. Architecture Minimap ----
+  function renderMinimap(pre, raw) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) {
+      pre.innerHTML = `<code>Invalid arch-minimap JSON: ${e.message}</code>`;
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'interactive-container';
+    container.innerHTML = `
+      <div class="interactive-header"><span class="label">Architecture Map</span></div>
+      <div class="interactive-body"><div class="minimap-panel"><svg viewBox="0 0 400 250" style="width:100%;height:auto"></svg></div></div>`;
+    pre.replaceWith(container);
+
+    const svg = container.querySelector('svg');
+    const currentPage = getCurrentPage();
+    const nodeW = 90, nodeH = 32;
+
+    // Draw connections first (behind nodes)
+    data.connections.forEach(conn => {
+      const from = data.components.find(c => c.id === conn.from);
+      const to = data.components.find(c => c.id === conn.to);
+      if (!from || !to) return;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', from.x * 4);
+      line.setAttribute('y1', from.y * 2.5 + nodeH / 2);
+      line.setAttribute('x2', to.x * 4);
+      line.setAttribute('y2', to.y * 2.5 + nodeH / 2);
+      line.setAttribute('class', 'minimap-connection');
+      svg.appendChild(line);
+    });
+
+    // Draw nodes
+    data.components.forEach(comp => {
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', `minimap-node${comp.page === currentPage ? ' active' : ''}`);
+      g.setAttribute('transform', `translate(${comp.x * 4 - nodeW / 2}, ${comp.y * 2.5})`);
+      g.style.cursor = 'pointer';
+
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('width', nodeW);
+      rect.setAttribute('height', nodeH);
+
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', nodeW / 2);
+      text.setAttribute('y', nodeH / 2 + 4);
+      text.setAttribute('text-anchor', 'middle');
+      text.textContent = comp.label;
+
+      g.appendChild(rect);
+      g.appendChild(text);
+      g.addEventListener('click', () => {
+        if (comp.page) {
+          history.pushState(null, '', `?page=${comp.page}`);
+          loadPage();
+        }
+      });
+      svg.appendChild(g);
+    });
+  }
+
+  // ---- Utility ----
+  function escapeHtml(str) {
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ---- Boot ----
+  loadNav();
+  loadPage();
+
+  </script>
+</body>
+</html>

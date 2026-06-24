@@ -1,0 +1,19 @@
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Language / tooling artifacts that may appear while developing skill scripts
+node_modules/
+__pycache__/
+*.pyc
+.env
+.env.*
+*.log
+
+# Local scratch
+scratchpad/
+tmp/
