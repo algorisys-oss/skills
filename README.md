@@ -13,6 +13,10 @@ in context; the body loads when the skill triggers; `references/` and `scripts/`
 | Skill | What it does |
 |-------|--------------|
 | [`owasp/`](owasp/) | Identify, explain, and (on request) fix OWASP-class vulnerabilities in Node.js, TypeScript, React, SolidJS, Elixir, Python, and Go. Top 10 (2021) + 10 extended categories, with onboarding/KYC/backoffice/AI-ML domain checks. |
+| [`money-safety/`](money-safety/) | Find financial-correctness bugs in Node.js, TypeScript, Python, Go, and Elixir — float-for-money, rounding/currency errors, missing idempotency on payment endpoints, non-atomic balance updates, double-spend races, double-entry ledger imbalance. For banking/NBFC/fintech/ecommerce ledger & payment code. `/money-safety`. |
+| [`audit-trail/`](audit-trail/) | Find audit-logging gaps — sensitive operations (money movement, KYC/AML decisions, role/limit changes, auth, data export) with no audit record, records missing required fields, mutable/tamper-evident-less audit stores, and PII written into logs. Maps to PCI Req. 10 / RBI / DPDP / SOC2. `/audit-trail`. |
+| [`resilience/`](resilience/) | Find reliability gaps in external integrations — calls with no timeout, retries without backoff/jitter, non-idempotent retries, missing circuit breakers/bulkheads, unbounded pools, fragile webhooks. For gateway/UPI-NPCI/bureau/KYC-vendor integrations. `/resilience`. |
+| [`regtech/`](regtech/) | Map code & data flows against PCI-DSS/GDPR/SOC2 (global) and RBI/DPDP/NPCI/SEBI/Account Aggregator (India): data residency, consent, retention/erasure, encryption, PII inventory, access accountability. Orchestrates `owasp`/`audit-trail`/`money-safety` for security & logging controls. `/regtech`. |
 | [`teachme/`](teachme/) | Teach a concept or skill through Socratic questioning + worked examples (not lectures). Runs a diagnose → worked-example → faded-example → independent-practice → spaced-retrieval loop, calibrated to the learner's level and continued across sessions via a small workspace. `/teachme <topic>`. |
 
 #### Using `owasp` — scan vs. fix
@@ -37,6 +41,17 @@ When fixing, it splits changes by risk:
 
 It never weakens a control to make a test pass, and **re-runs the scan after fixing** to confirm
 the signature is gone — flagging anything that still needs a human security review.
+
+#### The fintech skills follow the same scan-vs-fix model
+
+[`money-safety`](money-safety/), [`audit-trail`](audit-trail/), [`resilience`](resilience/), and
+[`regtech`](regtech/) are built on the same contract as `owasp`: **report by default, never modify
+code unless you pass `--fix`**, the same `<path>` / `--diff` / `--staged` scoping, mechanical fixes
+applied directly while behavior-changing ones (data migrations, consent gates, breaker thresholds,
+retrying a non-idempotent call) are explained and confirmed first, and a re-scan after fixing. They
+cross-reference rather than duplicate each other — `regtech` orchestrates `owasp`/`audit-trail`/
+`money-safety` for the security and logging controls, and `resilience` defers operation idempotency
+to `money-safety`. `regtech` additionally states it is **not legal advice**.
 
 ### Command-based projects
 
