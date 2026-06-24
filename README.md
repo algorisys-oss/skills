@@ -13,6 +13,7 @@ in context; the body loads when the skill triggers; `references/` and `scripts/`
 | Skill | What it does |
 |-------|--------------|
 | [`owasp/`](owasp/) | Identify, explain, and (on request) fix OWASP-class vulnerabilities in Node.js, TypeScript, React, SolidJS, Elixir, Python, and Go. Top 10 (2021) + 10 extended categories, with onboarding/KYC/backoffice/AI-ML domain checks. |
+| [`teachme/`](teachme/) | Teach a concept or skill through Socratic questioning + worked examples (not lectures). Runs a diagnose → worked-example → faded-example → independent-practice → spaced-retrieval loop, calibrated to the learner's level and continued across sessions via a small workspace. `/teachme <topic>`. |
 
 ### Command-based projects
 

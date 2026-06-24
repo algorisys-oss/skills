@@ -9,6 +9,10 @@ A monorepo of in-house Claude Code skills and command-based projects. Set up as 
 repo (the user chose one repo over per-skill repos). Two things live here today:
 
 - **`owasp/`** — a `SKILL.md` skill (the main work product of this project).
+- **`teachme/`** — a `SKILL.md` tutoring skill: Socratic questioning + worked examples, with a
+  per-topic `.teachme/<topic>/` workspace (MISSION/LOG/RESOURCES) for multi-session continuity.
+  Inspired by mattpocock/skills `teach`, but the engine is the Socratic + worked-example
+  (diagnose → worked → faded → independent → retrieval) loop. References under `teachme/references/`.
 - **`code-to-docs/`** — a pre-existing Claude Code course-generator distributed as slash commands
   (`.claude/commands/`), folded in after its own `.git` was removed by the user.
 
