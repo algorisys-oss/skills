@@ -28,6 +28,22 @@ Client-side risk is mostly XSS, secret leakage into the bundle, and token storag
 - **Look for:** `navigate(searchParams.get('next'))`, `window.location = returnTo`.
 - **Fix:** allow only relative same-origin paths (must start with a single `/`, not `//`).
 
+## 16 Open redirect — React Router
+React Router is the common case. All three navigation paths are sinks when fed user input:
+- **Look for:** `const navigate = useNavigate(); navigate(searchParams.get('next'))`;
+  `<Navigate to={params.returnTo} />`; and, in data-router loaders/actions, `redirect(url)` /
+  `throw redirect(formData.get('next'))`.
+- **Fix:** validate to a relative same-origin path before navigating/redirecting; reject absolute
+  URLs and `//host`:
+  ```jsx
+  const safe = (p) => /^\/(?!\/)/.test(p) ? p : '/'
+  navigate(safe(next))           // or <Navigate to={safe(next)} />
+  ```
+- **Note (framework mode):** in Remix / React Router framework mode, loaders and actions run on the
+  **server** — treat them as backend and apply `nodejs.md` (authz on every loader/action, validate
+  `request`/`params`, watch SSRF on user URLs). `<a href>`/`<Link to>` to external URLs still want
+  `rel="noopener noreferrer"`.
+
 ## 18 Secrets in the bundle
 - **Look for:** `REACT_APP_*SECRET/KEY/TOKEN/PASSWORD`, `NEXT_PUBLIC_*` secrets, API keys, private
   keys, hardcoded credentials in any client file.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# scan.sh - heuristic OWASP candidate finder for Node.js, React, SolidJS, Elixir, Python, Go.
+# scan.sh - heuristic OWASP candidate finder for Node.js, TypeScript, React, SolidJS, Elixir, Python, Go.
 #
 # This is a HIGH-RECALL, LOW-PRECISION pre-filter. It greps for dangerous APIs
 # and patterns and prints candidate `file:line` locations grouped by OWASP
@@ -12,7 +12,7 @@
 #   scan.sh [PATH]            Scan a directory or file (default: current dir)
 #   scan.sh --diff            Scan only files changed vs git HEAD / branch
 #   scan.sh --staged          Scan only git-staged files
-#   scan.sh PATH --lang node  Restrict to one language (node|react|solidjs|elixir|python|go)
+#   scan.sh PATH --lang node  Restrict to one language (node|typescript|react|solidjs|elixir|python|go)
 #
 # Output: TSV-ish lines  ->  CATEGORY \t file:line \t matched text
 # Exit code is always 0 (candidates are not failures); empty output = no hits.
@@ -113,6 +113,7 @@ search() {
 want() { [ -z "$ONLY_LANG" ] || [ "$ONLY_LANG" = "$1" ]; }
 
 JS_GLOBS=("*.js" "*.jsx" "*.ts" "*.tsx" "*.mjs" "*.cjs")
+TS_GLOBS=("*.ts" "*.tsx" "*.mts" "*.cts")
 PY_GLOBS=("*.py")
 EX_GLOBS=("*.ex" "*.exs" "*.eex" "*.heex" "*.leex")
 GO_GLOBS=("*.go")
@@ -123,6 +124,12 @@ GO_GLOBS=("*.go")
 search '(api[_-]?key|secret|password|passwd|token|client[_-]?secret|aws_access|private[_-]?key)\s*[:=]\s*["'\''"][A-Za-z0-9/+_=-]{12,}' "SECRETS" \
   "*.js" "*.jsx" "*.ts" "*.tsx" "*.py" "*.ex" "*.exs" "*.go" "*.json" "*.yml" "*.yaml" "*.env*"
 search '-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----' "SECRETS" "*"
+
+# Shared frontend router open redirect (React Router & Solid Router both use
+# useNavigate()->navigate(...) and redirect(...)). Ungated + framework-agnostic
+# so it fires once regardless of --lang and never double-counts across the
+# react/solidjs blocks below.
+search '\b(navigate|redirect)\(\s*[^)]*(searchParams|params|query|location|next|returnTo|url)' "OPEN-REDIRECT" "${JS_GLOBS[@]}"
 
 # ============================================================================
 # Node.js / TypeScript backend
@@ -153,6 +160,7 @@ if want react; then
   search 'dangerouslySetInnerHTML' "A03-XSS-DANGEROUS-HTML" "${JS_GLOBS[@]}"
   search '\.innerHTML\s*=|insertAdjacentHTML|document\.write' "A03-XSS-DOM" "${JS_GLOBS[@]}"
   search 'href=\{[^}]*\}|window\.location\s*=|location\.href\s*=' "OPEN-REDIRECT-XSS" "${JS_GLOBS[@]}"
+  search '<Navigate\b[^>]*\bto\s*=\s*\{' "OPEN-REDIRECT" "${JS_GLOBS[@]}"   # React Router <Navigate to={...}/>
   search 'localStorage\.setItem\(.*(token|jwt|secret|password)|sessionStorage\.setItem\(.*(token|jwt)' "A07-TOKEN-IN-STORAGE" "${JS_GLOBS[@]}"
   search 'REACT_APP_[A-Z_]*(SECRET|KEY|TOKEN|PASSWORD)' "SECRETS-CLIENT-BUNDLE" "${JS_GLOBS[@]}"
   search 'target=["'\'']_blank["'\'']' "REL-NOOPENER" "*.jsx" "*.tsx"
@@ -165,9 +173,21 @@ fi
 if want solidjs; then
   search 'innerHTML\s*=\s*\{' "A03-XSS-INNERHTML-PROP" "${JS_GLOBS[@]}"
   search '<Dynamic\b[^>]*component\s*=\s*\{' "A03-XSS-DYNAMIC-COMPONENT" "${JS_GLOBS[@]}"
-  search '\b(navigate|redirect)\(\s*[^)]*(searchParams|params|query|location|next|returnTo|url)' "OPEN-REDIRECT" "${JS_GLOBS[@]}"
   search 'import\.meta\.env\.VITE_[A-Z_]*(SECRET|KEY|TOKEN|PASSWORD)' "SECRETS-CLIENT-BUNDLE" "${JS_GLOBS[@]}"
   search '["'\'']use server["'\'']' "SOLIDSTART-SERVER-FN" "${JS_GLOBS[@]}"
+fi
+
+# ============================================================================
+# TypeScript-specific  (sink rules come from the node/react/solidjs blocks,
+# which already scan .ts/.tsx; these flag the TS-only trap that types are NOT
+# runtime validation, plus NestJS validation/authz — see references/typescript.md)
+# ============================================================================
+if want typescript; then
+  search '(req|request|ctx|context)\.(body|query|params|headers|cookies)(\.\w+)*\s+as\b' "A04-TS-CAST-NOT-VALIDATION" "${TS_GLOBS[@]}"
+  search 'JSON\.parse\([^)]*\)\s+as\b' "A04-TS-CAST-NOT-VALIDATION" "${TS_GLOBS[@]}"
+  search '\bas any\b|as unknown as\b' "TS-UNSAFE-CAST" "${TS_GLOBS[@]}"
+  search '@ts-(ignore|nocheck|expect-error)' "TS-SUPPRESSED-CHECK" "${TS_GLOBS[@]}"
+  search 'new ValidationPipe\(' "NESTJS-VALIDATION-PIPE" "${TS_GLOBS[@]}"
 fi
 
 # ============================================================================

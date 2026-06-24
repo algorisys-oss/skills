@@ -1,17 +1,17 @@
 ---
 name: owasp
-description: Identify, explain, and (on request) fix OWASP-class security vulnerabilities in Node.js, React, SolidJS, Elixir, Python, and Go code. Use when the user asks to "run owasp", "security scan", "check for vulnerabilities", "OWASP review", "find security issues", "audit this for security", or invokes /owasp. Covers the OWASP Top 10 (2021) plus 10 extended categories (CSRF, XSS, mass assignment, path traversal, insecure upload, open redirect, deserialization, secrets, race conditions, AI/ML risks) with onboarding/KYC/backoffice domain checks.
+description: Identify, explain, and (on request) fix OWASP-class security vulnerabilities in Node.js, TypeScript, React, SolidJS, Elixir, Python, and Go code. Use when the user asks to "run owasp", "security scan", "check for vulnerabilities", "OWASP review", "find security issues", "audit this for security", or invokes /owasp. Covers the OWASP Top 10 (2021) plus 10 extended categories (CSRF, XSS, mass assignment, path traversal, insecure upload, open redirect, deserialization, secrets, race conditions, AI/ML risks) with onboarding/KYC/backoffice domain checks.
 user-invocable: true
 ---
 
 # owasp
 
-Find OWASP-class vulnerabilities in Node.js, React, SolidJS, Elixir, Python, and Go code, explain
-each in context, and apply fixes when asked. Built for onboarding journeys, video-KYC, workflow/rules
-backoffice systems, and internal/external AI-ML integrations.
+Find OWASP-class vulnerabilities in Node.js, TypeScript, React, SolidJS, Elixir, Python, and Go code,
+explain each in context, and apply fixes when asked. Built for onboarding journeys, video-KYC,
+workflow/rules backoffice systems, and internal/external AI-ML integrations.
 
 The category list (Top 10 + 10 extended = "Top 20") lives in `references/catalog.md`. Per-language
-dangerous-API → fix tables live in `references/{nodejs,react,solidjs,python,elixir,golang}.md`. Domain-specific
+dangerous-API → fix tables live in `references/{nodejs,typescript,react,solidjs,python,elixir,golang}.md`. Domain-specific
 checks (KYC, video upload, workflow races, LLM/prompt-injection) live in `references/domain-kyc-aiml.md`.
 
 ## Default behavior
@@ -39,10 +39,11 @@ categories and files to weight.
 
 ### 1. Detect languages & frameworks
 Identify which of Node.js/TypeScript, React/frontend, SolidJS, Python, Elixir, Go are present
-(manifests: `package.json` — incl. `solid-js`/`@solidjs/*`/`@solidjs/start` deps,
-`requirements.txt`/`pyproject.toml`, `mix.exs`, `go.mod`; file extensions; frameworks like
-Express/Django/FastAPI/Phoenix/Flask/gin/SolidStart). Load only the relevant `references/*.md`
-to save context.
+(manifests: `package.json` — incl. `typescript`, `react`/`react-router`, `solid-js`/`@solidjs/*`/
+`@solidjs/start`, `@nestjs/*` deps, `requirements.txt`/`pyproject.toml`, `mix.exs`, `go.mod`; file
+extensions; frameworks like Express/NestJS/Django/FastAPI/Phoenix/Flask/gin/SolidStart). Load only
+the relevant `references/*.md` to save context — and for any `.ts`/`.tsx` codebase also load
+`references/typescript.md` (the type-erasure / validation pitfalls).
 
 ### 2. Run the heuristic pre-filter
 Run the bundled scanner to get candidate `file:line` locations fast. It is **high-recall,
@@ -51,7 +52,7 @@ low-precision** — a triage list, not a verdict.
 ```sh
 scripts/scan.sh [PATH]        # default scope = path arg or "."
 scripts/scan.sh --diff        # changed files only
-scripts/scan.sh PATH --lang node|react|solidjs|python|elixir|go   # restrict language
+scripts/scan.sh PATH --lang node|typescript|react|solidjs|python|elixir|go   # restrict language
 ```
 
 Output is `CATEGORY \t file:line \t matched text`. It prefers `ripgrep` and falls back to `grep`.
@@ -117,8 +118,9 @@ Apply the smallest correct fix per the language reference, preferring framework-
 ## Resources
 
 - `references/catalog.md` — the Top 20 categories, descriptions, severity rubric.
-- `references/nodejs.md` · `references/react.md` · `references/solidjs.md` · `references/python.md`
-  · `references/elixir.md` · `references/golang.md` — per-language signatures and fixes.
+- `references/nodejs.md` · `references/typescript.md` · `references/react.md` · `references/solidjs.md`
+  · `references/python.md` · `references/elixir.md` · `references/golang.md` — per-language signatures
+  and fixes. (`typescript.md` = the runtime-validation/type-erasure pitfalls layered on the others.)
 - `references/domain-kyc-aiml.md` — KYC/upload, workflow races, multi-tenant access control,
   LLM/AI-ML risks.
 - `scripts/scan.sh` — heuristic candidate finder (ripgrep/grep).

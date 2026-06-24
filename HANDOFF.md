@@ -14,7 +14,8 @@ repo (the user chose one repo over per-skill repos). Two things live here today:
 
 ## Current state (as of handoff)
 
-- `owasp/` skill: **complete and tested.** Covers Node.js, React, SolidJS, Python, Elixir, Go.
+- `owasp/` skill: **complete and tested.** Covers Node.js, TypeScript, React (incl. React Router),
+  SolidJS, Python, Elixir, Go.
 - `code-to-docs/`: present, tracked, unchanged in content. Not a skill (no `SKILL.md`); `install.sh`
   intentionally skips it.
 - Repo scaffolding done: `README.md`, `.gitignore`, `install.sh`, this `HANDOFF.md`.
@@ -49,7 +50,8 @@ skills/
 │   ├── references/
 │   │   ├── catalog.md          # the "Top 20" categories + severity rubric
 │   │   ├── nodejs.md           # per-language signature -> fix tables
-│   │   ├── react.md
+│   │   ├── typescript.md       # TS-only: types≠runtime validation, as-any/ts-ignore, NestJS pipes/guards
+│   │   ├── react.md            # incl. React Router open-redirect (navigate/<Navigate>/redirect)
 │   │   ├── solidjs.md          # Solid-distinct: innerHTML prop, Dynamic, VITE_ secrets, "use server"
 │   │   ├── python.md
 │   │   ├── elixir.md

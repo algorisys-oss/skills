@@ -12,7 +12,7 @@ in context; the body loads when the skill triggers; `references/` and `scripts/`
 
 | Skill | What it does |
 |-------|--------------|
-| [`owasp/`](owasp/) | Identify, explain, and (on request) fix OWASP-class vulnerabilities in Node.js, React, SolidJS, Elixir, Python, and Go. Top 10 (2021) + 10 extended categories, with onboarding/KYC/backoffice/AI-ML domain checks. |
+| [`owasp/`](owasp/) | Identify, explain, and (on request) fix OWASP-class vulnerabilities in Node.js, TypeScript, React, SolidJS, Elixir, Python, and Go. Top 10 (2021) + 10 extended categories, with onboarding/KYC/backoffice/AI-ML domain checks. |
 
 ### Command-based projects
 
