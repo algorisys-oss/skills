@@ -116,6 +116,53 @@ doesn't exist on a teammate's machine. To update later, re-copy the folder and c
 Skills marked `user-invocable: true` in their frontmatter are also available as slash commands
 (e.g. `/owasp`) in both modes.
 
+## Using these skills in other agents (Cursor, Google Antigravity, Windsurf, Copilot…)
+
+Every skill here is just **portable Markdown + a plain shell script** — there is nothing
+Claude-specific about the analysis. Claude Code is the only tool that *natively* discovers a
+`SKILL.md` and exposes it as a `/slash-command`; other agentic editors have no `SKILL.md` loader
+(they use their own rules/instructions formats). But you can still use these skills in them two ways:
+
+**1. Run the scanners directly — works in any tool, no skill support needed.**
+`scripts/scan.sh` is ordinary `bash` + `ripgrep`/`grep`. Run it from the integrated terminal of
+Cursor / Antigravity / Windsurf / VS Code (or a CI step) and feed the output to that tool's agent:
+
+```bash
+# clone once, anywhere
+git clone https://github.com/algorisys-oss/skills ~/.agent-skills
+
+# then, in your project, run a scanner and let the IDE's agent triage the hits
+~/.agent-skills/owasp/scripts/scan.sh src/ > /tmp/owasp.txt
+~/.agent-skills/pii-guard/scripts/scan.sh src/ --diff
+```
+
+Then ask the agent: *"Triage these `file:line` hits using the guidance in `~/.agent-skills/owasp/`."*
+
+**2. Point the agent at the `SKILL.md` as an instruction file.** The body is a self-contained
+playbook; any agent that can read repo files can follow it. Two common wirings:
+
+- **Cursor** — add a rule that references the skill, or `@`-mention the file in chat:
+  ```md
+  <!-- .cursor/rules/owasp.mdc -->
+  When asked to run a security scan, follow ~/.agent-skills/owasp/SKILL.md:
+  run scripts/scan.sh, then triage each hit against references/<language>.md.
+  ```
+  or just type in Cursor chat: `@owasp/SKILL.md follow this to scan src/`.
+- **Google Antigravity / Windsurf / Copilot / any AGENTS.md-aware agent** — these read agent
+  instruction files and support MCP/terminal tools. Vendor a skill into the project (Option B above)
+  and add a pointer in your `AGENTS.md` so the agent knows it exists:
+  ```md
+  ## Skills
+  - Security scan: follow `.claude/skills/owasp/SKILL.md` (run its `scripts/scan.sh`, triage hits).
+  - PII / data-protection: `.claude/skills/pii-guard/SKILL.md`.
+  - Threat model a feature: `.claude/skills/threat-model/SKILL.md`.
+  ```
+  Then prompt the agent: *"Threat-model the payments flow using the threat-model skill."*
+
+The skills are deliberately built so the **deterministic part** (the `scan.sh` heuristics) is separable
+from the **reasoning part** (the `SKILL.md` + `references/`). That split is what makes them portable:
+the scanner runs anywhere, and the playbook is plain English any capable agent can execute.
+
 ## Authoring conventions
 
 Skills in this repo follow the Claude Code skill-development guidance:
