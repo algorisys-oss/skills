@@ -17,6 +17,8 @@ in context; the body loads when the skill triggers; `references/` and `scripts/`
 | [`audit-trail/`](audit-trail/) | Find audit-logging gaps — sensitive operations (money movement, KYC/AML decisions, role/limit changes, auth, data export) with no audit record, records missing required fields, mutable/tamper-evident-less audit stores, and PII written into logs. Maps to PCI Req. 10 / RBI / DPDP / SOC2. `/audit-trail`. |
 | [`resilience/`](resilience/) | Find reliability gaps in external integrations — calls with no timeout, retries without backoff/jitter, non-idempotent retries, missing circuit breakers/bulkheads, unbounded pools, fragile webhooks. For gateway/UPI-NPCI/bureau/KYC-vendor integrations. `/resilience`. |
 | [`regtech/`](regtech/) | Map code & data flows against PCI-DSS/GDPR/SOC2 (global) and RBI/DPDP/NPCI/SEBI/Account Aggregator (India): data residency, consent, retention/erasure, encryption, PII inventory, access accountability. Orchestrates `owasp`/`audit-trail`/`money-safety` for security & logging controls. `/regtech`. |
+| [`pii-guard/`](pii-guard/) | Find PII/PCI data (card PAN, CVV, income-tax PAN, Aadhaar, account number, IFSC, UPI VPA, passport, DOB, name, email, phone, biometrics) leaking into logs, error trackers, analytics, API responses, URLs, caches, and non-prod — plus plaintext-at-rest and missing masking/tokenisation. Owns the masking/redaction patterns; India-aware value formats. `/pii-guard`. |
+| [`threat-model/`](threat-model/) | Produce a STRIDE threat model for a feature/endpoint/journey — enumerate the data-flow diagram and trust boundaries, derive threats per element, rate them, and map each to a concrete mitigation and the skill that owns the fix. Saves to `docs/threat-models/<feature>.md`. The preventive, design-level counterpart to the detective skills. `/threat-model <feature>`. |
 | [`teachme/`](teachme/) | Teach a concept or skill through Socratic questioning + worked examples (not lectures). Runs a diagnose → worked-example → faded-example → independent-practice → spaced-retrieval loop, calibrated to the learner's level and continued across sessions via a small workspace. `/teachme <topic>`. |
 
 #### Using `owasp` — scan vs. fix
@@ -44,14 +46,20 @@ the signature is gone — flagging anything that still needs a human security re
 
 #### The fintech skills follow the same scan-vs-fix model
 
-[`money-safety`](money-safety/), [`audit-trail`](audit-trail/), [`resilience`](resilience/), and
-[`regtech`](regtech/) are built on the same contract as `owasp`: **report by default, never modify
-code unless you pass `--fix`**, the same `<path>` / `--diff` / `--staged` scoping, mechanical fixes
-applied directly while behavior-changing ones (data migrations, consent gates, breaker thresholds,
-retrying a non-idempotent call) are explained and confirmed first, and a re-scan after fixing. They
-cross-reference rather than duplicate each other — `regtech` orchestrates `owasp`/`audit-trail`/
-`money-safety` for the security and logging controls, and `resilience` defers operation idempotency
-to `money-safety`. `regtech` additionally states it is **not legal advice**.
+[`money-safety`](money-safety/), [`audit-trail`](audit-trail/), [`resilience`](resilience/),
+[`regtech`](regtech/), and [`pii-guard`](pii-guard/) are built on the same contract as `owasp`:
+**report by default, never modify code unless you pass `--fix`**, the same `<path>` / `--diff` /
+`--staged` scoping, mechanical fixes applied directly while behavior-changing ones (data migrations,
+consent gates, breaker thresholds, retrying a non-idempotent call) are explained and confirmed
+first, and a re-scan after fixing. They cross-reference rather than duplicate each other — `regtech`
+orchestrates `owasp`/`audit-trail`/`money-safety` for the security and logging controls, `resilience`
+defers operation idempotency to `money-safety`, and `pii-guard` owns the masking/redaction depth that
+`regtech` and `audit-trail` point at. `regtech` additionally states it is **not legal advice**.
+
+[`threat-model`](threat-model/) is the odd one out: it is **preventive, not detective** — instead of
+scanning for and fixing instances, it produces a STRIDE threat-model *document* for one flow and maps
+each threat to the detective skill that owns the fix. Use it at design time; use the others to find
+and fix.
 
 ### Command-based projects
 
