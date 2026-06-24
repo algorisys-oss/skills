@@ -14,12 +14,16 @@ repo (the user chose one repo over per-skill repos). Two things live here today:
 
 ## Current state (as of handoff)
 
-- `owasp/` skill: **complete and tested.** Covers Node.js, React, Python, Elixir, Go.
+- `owasp/` skill: **complete and tested.** Covers Node.js, React, SolidJS, Python, Elixir, Go.
 - `code-to-docs/`: present, tracked, unchanged in content. Not a skill (no `SKILL.md`); `install.sh`
   intentionally skips it.
 - Repo scaffolding done: `README.md`, `.gitignore`, `install.sh`, this `HANDOFF.md`.
-- **Git: initialized with one local commit, no remote** (user will add a remote/push later).
-  If you arrive and `git log` is empty, the init/commit step did not run — do it (see Next steps).
+- **Git: pushed to public remote** `origin` → https://github.com/algorisys-oss/skills (branch
+  `main`). Histories were merged with `--allow-unrelated-histories` to fold in the remote's
+  `LICENSE` (MIT). User confirmed public is fine — the KYC reference is generic security guidance,
+  no proprietary data.
+- **Installed:** `owasp` is symlinked into `~/.claude/skills` via `./install.sh`. Smoke-tested:
+  `scan.sh` correctly flags Python/Node/Go fixtures and ignores parameterized SQL.
 
 ## Key decisions already made (do not re-litigate)
 
@@ -29,8 +33,8 @@ repo (the user chose one repo over per-skill repos). Two things live here today:
 3. **`owasp` default scope: whole repository** (path / `--diff` / `--staged` narrow it).
 4. **`code-to-docs` is folded in** (user deleted its `.git`); it was originally the public repo
    `algorisys-oss/code-to-docs`.
-5. Git: **local commit only, no remote yet.** Repo is private-intent (contains KYC domain
-   knowledge in `owasp/references/domain-kyc-aiml.md`).
+5. Git: **public remote** `algorisys-oss/skills`. (Earlier "private-intent" caution is resolved —
+   user confirmed public is fine; the KYC reference is generic, non-proprietary security guidance.)
 
 ## Layout
 
@@ -46,6 +50,7 @@ skills/
 │   │   ├── catalog.md          # the "Top 20" categories + severity rubric
 │   │   ├── nodejs.md           # per-language signature -> fix tables
 │   │   ├── react.md
+│   │   ├── solidjs.md          # Solid-distinct: innerHTML prop, Dynamic, VITE_ secrets, "use server"
 │   │   ├── python.md
 │   │   ├── elixir.md
 │   │   ├── golang.md

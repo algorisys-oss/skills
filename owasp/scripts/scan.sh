@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# scan.sh - heuristic OWASP candidate finder for Node.js, React, Elixir, Python.
+# scan.sh - heuristic OWASP candidate finder for Node.js, React, SolidJS, Elixir, Python, Go.
 #
 # This is a HIGH-RECALL, LOW-PRECISION pre-filter. It greps for dangerous APIs
 # and patterns and prints candidate `file:line` locations grouped by OWASP
@@ -12,7 +12,7 @@
 #   scan.sh [PATH]            Scan a directory or file (default: current dir)
 #   scan.sh --diff            Scan only files changed vs git HEAD / branch
 #   scan.sh --staged          Scan only git-staged files
-#   scan.sh PATH --lang node  Restrict to one language (node|react|elixir|python)
+#   scan.sh PATH --lang node  Restrict to one language (node|react|solidjs|elixir|python|go)
 #
 # Output: TSV-ish lines  ->  CATEGORY \t file:line \t matched text
 # Exit code is always 0 (candidates are not failures); empty output = no hits.
@@ -156,6 +156,18 @@ if want react; then
   search 'localStorage\.setItem\(.*(token|jwt|secret|password)|sessionStorage\.setItem\(.*(token|jwt)' "A07-TOKEN-IN-STORAGE" "${JS_GLOBS[@]}"
   search 'REACT_APP_[A-Z_]*(SECRET|KEY|TOKEN|PASSWORD)' "SECRETS-CLIENT-BUNDLE" "${JS_GLOBS[@]}"
   search 'target=["'\'']_blank["'\'']' "REL-NOOPENER" "*.jsx" "*.tsx"
+fi
+
+# ============================================================================
+# SolidJS / SolidStart  (shares the generic frontend sinks in the React block;
+# these are the Solid-distinct signatures — see references/solidjs.md)
+# ============================================================================
+if want solidjs; then
+  search 'innerHTML\s*=\s*\{' "A03-XSS-INNERHTML-PROP" "${JS_GLOBS[@]}"
+  search '<Dynamic\b[^>]*component\s*=\s*\{' "A03-XSS-DYNAMIC-COMPONENT" "${JS_GLOBS[@]}"
+  search '\b(navigate|redirect)\(\s*[^)]*(searchParams|params|query|location|next|returnTo|url)' "OPEN-REDIRECT" "${JS_GLOBS[@]}"
+  search 'import\.meta\.env\.VITE_[A-Z_]*(SECRET|KEY|TOKEN|PASSWORD)' "SECRETS-CLIENT-BUNDLE" "${JS_GLOBS[@]}"
+  search '["'\'']use server["'\'']' "SOLIDSTART-SERVER-FN" "${JS_GLOBS[@]}"
 fi
 
 # ============================================================================
